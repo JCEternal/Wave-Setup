@@ -1,5 +1,7 @@
 # Created by JC with the help of GTP4o
 # February 28, 2025
+# !You will need Requests installed
+# install requests with pip install requests
 
 #! python
 import requests
