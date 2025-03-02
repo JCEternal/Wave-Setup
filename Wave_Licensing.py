@@ -1,5 +1,5 @@
 # Wave Licensing 1.0 3/2/25
-# Created by JC with the help of GPT4o
+# Created by JC
 # Needs requests installed, pip install requests
 
 # Simply copy and paste all the license data (not need to truncate any information, the script cleans it up), run the
