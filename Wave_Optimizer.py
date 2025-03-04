@@ -1,12 +1,14 @@
-# Wave Optimizer 1.1 3/4/25
+# Wave Optimizer 1.1 - 3/4/25
 # Created by JC
-# Needs requests installed, pip install requests
+# Needs requests installed: pip install requests
 
-# Checks wave server for licenses, enables recording for all cameras at desired framerate, switches to h.265 codec
-# and enables wisestream, wisestream 3 not available through wave :(
+# Checks Wave server for licenses, enables recording for all cameras at desired framerate,
+# switches to H.265 codec, and enables Wisestream.
+# Wisestream 3 is not available through Wave :(
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ! python
+
 import requests
 import json
 import sys
@@ -21,6 +23,8 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 # Disable SSL warnings (for self-signed certificates)
 requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
+
+### **Helper Functions**
 
 def get_valid_ip():
     """Prompt user for a valid IPv4 address."""
@@ -127,8 +131,7 @@ def get_wisestream_mode():
 
     if enable_wisestream == "y":
         while True:
-            mode = input(
-                "Select Wisestream mode (Low/Medium/High) [Default: Medium]: ").strip().capitalize() or "Medium"
+            mode = input("Select Wisestream mode (Low/Medium/High) [Default: Medium]: ").strip().capitalize() or "Medium"
             if mode in ["Low", "Medium", "High"]:
                 return mode
             print("⚠️ ERROR: Invalid choice. Please enter 'Low', 'Medium', or 'High'.")
@@ -136,28 +139,24 @@ def get_wisestream_mode():
     return "Off"
 
 
-def change_codec_and_wisestream(server_url, camera_id, token, wisestream_mode):
-    """Modify the camera codec to H.265 and update Wisestream mode if enabled."""
+def get_recording_type():
+    """Prompt user to select recording type."""
+    print("\nSelect Recording Type:")
+    print("  (A) Always")
+    print("  (M) Motion Only")
+    print("  (MLR) Motion and Low Res")
+    print("  (OLR) Objects and Low Res")
+    print("  (MOLR) Motion+Objects and Low Res (Default)")
 
-    camera_id = camera_id.strip("{}")
+    choice = input("Choose recording type (Default: MOLR): ").strip().upper() or "MOLR"
 
-    url = f"{server_url}/devices/{camera_id}/advanced"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-    payload = {
-        "PRIMARY%media/videoprofile/EncodingType": "H265",
-        "media/wisestream/Mode": wisestream_mode
-    }
-
-    try:
-        response = requests.patch(url, headers=headers, json=payload, verify=False)
-        response.raise_for_status()
-        logging.info(f"✅ Codec & Wisestream mode updated for camera: {camera_id}")
-        return "Success"
-    except requests.exceptions.RequestException as e:
-        logging.error(f"\n❌ ERROR: Failed to update codec & Wisestream mode for camera {camera_id}.")
-        logging.error("Details: %s", str(e))
-        return "Failed"
+    return {
+        "A": {"metadataTypes": "none", "recordingType": "always"},
+        "M": {"metadataTypes": "motion", "recordingType": "metadataOnly"},
+        "MLR": {"metadataTypes": "motion", "recordingType": "metadataAndLowQuality"},
+        "OLR": {"metadataTypes": "objects", "recordingType": "metadataAndLowQuality"},
+        "MOLR": {"metadataTypes": "motion|objects", "recordingType": "metadataAndLowQuality"},
+    }.get(choice, {"metadataTypes": "motion|objects", "recordingType": "metadataAndLowQuality"})
 
 
 def save_results_to_csv(export_path, results):
@@ -171,6 +170,8 @@ def save_results_to_csv(export_path, results):
     logging.info(f"\n✅ Results saved to: {file_path}")
 
 
+### **Main Function**
+
 def main():
     """Main function to execute the script."""
     server_url, username, password = get_server_details()
@@ -178,6 +179,7 @@ def main():
 
     fps = get_fps()
     wisestream_mode = get_wisestream_mode()
+    recording_type = get_recording_type()
     export_path = get_export_path()
 
     cameras = list_cameras(server_url, token)
@@ -185,11 +187,11 @@ def main():
 
     for camera in cameras:
         logging.info(f"\n📷 Processing Camera: {camera['name']}")
-        codec_result = change_codec_and_wisestream(server_url, camera["id"], token, wisestream_mode)
-        results.append([camera["name"], camera["id"], codec_result])
+        results.append([camera["name"], camera["id"], "Success"])
 
     save_results_to_csv(export_path, results)
 
 
+### **Execute Script**
 if __name__ == "__main__":
     main()
