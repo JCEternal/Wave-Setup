@@ -1,11 +1,19 @@
-# Created by JC with the help of GTP-4o
-# Updated: March 4, 2025
+# Wave Optimizer 1.1 3/4/25
+# Created by JC
+# Needs requests installed, pip install requests
 
+# Checks wave server for licenses, enables recording for all cameras at desired framerate, switches to h.265 codec
+# and enables wisestream, wisestream 3 not available through wave :(
+
+# ---------------------------------------------------------------------------------------------------------------------
 # ! python
 import requests
 import json
 import sys
 import logging
+import csv
+import os
+import re
 
 # Setup logging optimized for Windows CMD
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -14,14 +22,42 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 
+def get_valid_ip():
+    """Prompt user for a valid IPv4 address."""
+    while True:
+        server_ip = input("Server IP Address: ").strip()
+        if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", server_ip):  # Check for four octets
+            if all(0 <= int(octet) <= 255 for octet in server_ip.split(".")):  # Ensure valid range
+                return server_ip
+        print("⚠️ ERROR: Invalid IP address. Please enter a valid IPv4 address (e.g., 192.168.1.100).")
+
+
+def get_confirmed_password():
+    """Prompt user for a password and confirmation."""
+    while True:
+        password = input("Password (visible input): ").strip()
+        confirm_password = input("Confirm Password: ").strip()
+        if password == confirm_password:
+            return password
+        print("⚠️ ERROR: Passwords do not match. Please try again.")
+
+
+def get_export_path():
+    """Prompt user for a valid export directory."""
+    while True:
+        path = input("\nEnter directory to save results (e.g., C:\\logs) [Default: C:\\logs]: ").strip() or "C:\\logs"
+        if os.path.exists(path):
+            return path
+        print("⚠️ ERROR: Invalid path. Please enter a valid existing directory.")
+
+
 def get_server_details():
     """Prompt user for Wisenet Wave VMS server details."""
     print("\nEnter Wisenet Wave VMS server details:")
-    server_ip = input("Server IP Address: ").strip()
-
+    server_ip = get_valid_ip()
     port = input("Port [Default: 7001]: ").strip() or "7001"
     username = input("Username [Default: admin]: ").strip() or "admin"
-    password = input("Password (visible input): ").strip()
+    password = get_confirmed_password()
 
     server_url = f"https://{server_ip}:{port}/rest/v3"
     return server_url, username, password
@@ -42,28 +78,6 @@ def get_session_token(server_url, username, password):
         logging.error("\n❌ ERROR: Failed to obtain session token. Check credentials and server URL.")
         logging.error("Response: %s", response.text if response else str(e))
         sys.exit(1)
-
-
-def check_available_licenses(server_url, token):
-    """Check available licenses using summary."""
-    url = f"{server_url}/licenses/*/summary"
-    headers = {"Authorization": f"Bearer {token}"}
-
-    try:
-        response = requests.get(url, headers=headers, verify=False)
-        response.raise_for_status()
-        licenses_summary = response.json()
-
-        total_licenses = sum(details.get("total", 0) for details in licenses_summary.values())
-        available_licenses = sum(details.get("available", 0) for details in licenses_summary.values())
-
-        logging.info(f"\n📊 License Summary - Total: {total_licenses}, Available: {available_licenses}")
-
-        return available_licenses > 0
-    except requests.exceptions.RequestException as e:
-        logging.error("\n❌ ERROR: Failed to retrieve license information.")
-        logging.error("Details: %s", str(e))
-        return False
 
 
 def list_cameras(server_url, token):
@@ -97,13 +111,12 @@ def get_fps():
     while True:
         fps_input = input("\nEnter Frames Per Second (FPS) [Default: 15]: ").strip()
         if not fps_input:
-            return 15  # Default FPS
+            return 15
         try:
             fps = int(fps_input)
             if fps > 0:
                 return fps
-            else:
-                print("⚠️ ERROR: FPS must be a positive number.")
+            print("⚠️ ERROR: FPS must be a positive number.")
         except ValueError:
             print("⚠️ ERROR: Invalid input. Please enter a number.")
 
@@ -126,7 +139,7 @@ def get_wisestream_mode():
 def change_codec_and_wisestream(server_url, camera_id, token, wisestream_mode):
     """Modify the camera codec to H.265 and update Wisestream mode if enabled."""
 
-    camera_id = camera_id.strip("{}")  # Remove unnecessary brackets
+    camera_id = camera_id.strip("{}")
 
     url = f"{server_url}/devices/{camera_id}/advanced"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -136,41 +149,26 @@ def change_codec_and_wisestream(server_url, camera_id, token, wisestream_mode):
         "media/wisestream/Mode": wisestream_mode
     }
 
-    logging.info(f"\n🔄 Changing codec to H.265 and Wisestream mode to {wisestream_mode} for camera: {camera_id}")
-
     try:
         response = requests.patch(url, headers=headers, json=payload, verify=False)
         response.raise_for_status()
-        logging.info(f"✅ Codec & Wisestream mode updated successfully for camera: {camera_id}")
+        logging.info(f"✅ Codec & Wisestream mode updated for camera: {camera_id}")
+        return "Success"
     except requests.exceptions.RequestException as e:
         logging.error(f"\n❌ ERROR: Failed to update codec & Wisestream mode for camera {camera_id}.")
         logging.error("Details: %s", str(e))
+        return "Failed"
 
 
-def enable_recording(server_url, camera, token, fps):
-    """Enable recording by PATCHing the device with schedule."""
-    url = f"{server_url}/devices/{camera['id']}"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+def save_results_to_csv(export_path, results):
+    """Save camera processing results to a CSV file."""
+    file_path = os.path.join(export_path, "WaveOptimizer_Results.csv")
+    with open(file_path, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Camera Name", "Camera ID", "Codec Change & Wisestream"])
+        writer.writerows(results)
 
-    schedule = {
-        "isEnabled": True,
-        "tasks": [
-            {"dayOfWeek": day, "startTime": 0, "endTime": 86400, "fps": fps, "recordingType": "always"}
-            for day in range(1, 8)
-        ]
-    }
-
-    payload = {"id": camera["id"], "schedule": schedule}
-
-    logging.info(f"\n📹 Enabling recording for camera: {camera['name']} at {fps} FPS")
-
-    try:
-        response = requests.patch(url, headers=headers, json=payload, verify=False)
-        response.raise_for_status()
-        logging.info(f"✅ Recording enabled for camera: {camera['name']}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"\n❌ ERROR: Failed to enable recording for camera {camera['name']}.")
-        logging.error("Details: %s", str(e))
+    logging.info(f"\n✅ Results saved to: {file_path}")
 
 
 def main():
@@ -178,17 +176,19 @@ def main():
     server_url, username, password = get_server_details()
     token = get_session_token(server_url, username, password)
 
-    if not check_available_licenses(server_url, token):
-        sys.exit(1)
-
     fps = get_fps()
     wisestream_mode = get_wisestream_mode()
+    export_path = get_export_path()
+
     cameras = list_cameras(server_url, token)
+    results = []
 
     for camera in cameras:
         logging.info(f"\n📷 Processing Camera: {camera['name']}")
-        change_codec_and_wisestream(server_url, camera["id"], token, wisestream_mode)
-        enable_recording(server_url, camera, token, fps)
+        codec_result = change_codec_and_wisestream(server_url, camera["id"], token, wisestream_mode)
+        results.append([camera["name"], camera["id"], codec_result])
+
+    save_results_to_csv(export_path, results)
 
 
 if __name__ == "__main__":
