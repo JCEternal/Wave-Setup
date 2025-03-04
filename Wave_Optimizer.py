@@ -1,245 +1,194 @@
-# Created by JC with the help of GTP4o
-# February 28, 2025
-# !You will need Requests installed
-# install requests with pip install requests
+# Created by JC with the help of GTP-4o
+# Updated: March 4, 2025
 
-#! python
+# ! python
 import requests
 import json
 import sys
+import logging
 
-# Disable SSL warnings (if using self-signed certificates)
+# Setup logging optimized for Windows CMD
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+# Disable SSL warnings (for self-signed certificates)
 requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 
-# Function to prompt for server details and credentials
 def get_server_details():
-    print("Enter Wisenet Wave VMS server details:")
+    """Prompt user for Wisenet Wave VMS server details."""
+    print("\nEnter Wisenet Wave VMS server details:")
     server_ip = input("Server IP Address: ").strip()
 
-    # Prompt for port with default option
-    port = input("Port (default 7001, hit enter to use default): ").strip()
-    if not port:
-        port = "7001"  # Default port for Wisenet Wave VMS
-
-    # Prompt for username with default option
-    username = input("Username (default admin, hit enter to use default): ").strip()
-    if not username:
-        username = "admin"  # Default admin account
-
+    port = input("Port [Default: 7001]: ").strip() or "7001"
+    username = input("Username [Default: admin]: ").strip() or "admin"
     password = input("Password (visible input): ").strip()
+
     server_url = f"https://{server_ip}:{port}/rest/v3"
     return server_url, username, password
 
 
-# Function to authenticate and get session token
 def get_session_token(server_url, username, password):
+    """Authenticate and retrieve a session token."""
     url = f"{server_url}/login/sessions"
-    payload = {
-        "username": username,
-        "password": password
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    response = requests.post(url, json=payload, headers=headers, verify=False)
-    if response.status_code in [200, 201]:
-        print("Session token obtained.")
-        return response.json().get('token')
-    else:
-        print("Failed to obtain session token. Check credentials and server URL.")
-        print("Response:", response.text)
+    payload = {"username": username, "password": password}
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, verify=False)
+        response.raise_for_status()
+        logging.info("✅ Authentication successful. Session token obtained.")
+        return response.json().get("token")
+    except requests.exceptions.RequestException as e:
+        logging.error("\n❌ ERROR: Failed to obtain session token. Check credentials and server URL.")
+        logging.error("Response: %s", response.text if response else str(e))
         sys.exit(1)
 
 
-# Function to check available licenses using summary
 def check_available_licenses(server_url, token):
+    """Check available licenses using summary."""
     url = f"{server_url}/licenses/*/summary"
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    response = requests.get(url, headers=headers, verify=False)
+    headers = {"Authorization": f"Bearer {token}"}
 
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers, verify=False)
+        response.raise_for_status()
         licenses_summary = response.json()
 
-        # Aggregate total and available licenses across all types
-        total_licenses = 0
-        available_licenses = 0
-        in_use = 0
+        total_licenses = sum(details.get("total", 0) for details in licenses_summary.values())
+        available_licenses = sum(details.get("available", 0) for details in licenses_summary.values())
 
-        # Sum up all licenses
-        for license_type, details in licenses_summary.items():
-            total_licenses += details.get('total', 0)
-            available_licenses += details.get('available', 0)
-            in_use += details.get('inUse', 0)
+        logging.info(f"\n📊 License Summary - Total: {total_licenses}, Available: {available_licenses}")
 
-        # Display aggregated license count
-        print("\n[INFO] License Summary:")
-        print(f"  Total Licenses: {total_licenses}")
-        print(f"  Available Licenses: {available_licenses}")
-        print(f"  In Use: {in_use}")
-
-        # Check if there are any available licenses
-        if available_licenses > 0:
-            print("Sufficient licenses available.")
-            return True
-        else:
-            print("Error: No available licenses. Add more licenses to enable recording.")
-            return False
-    else:
-        print("Failed to retrieve license information.")
-        print("Response:", response.text)
+        return available_licenses > 0
+    except requests.exceptions.RequestException as e:
+        logging.error("\n❌ ERROR: Failed to retrieve license information.")
+        logging.error("Details: %s", str(e))
         return False
 
 
-# Function to list all cameras and their details
 def list_cameras(server_url, token):
+    """Retrieve all cameras from the VMS system."""
     url = f"{server_url}/devices"
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    response = requests.get(url, headers=headers, verify=False)
+    headers = {"Authorization": f"Bearer {token}"}
 
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers, verify=False)
+        response.raise_for_status()
         devices = response.json()
 
-        # Filter out cameras by checking deviceType
-        cameras = []
-        for device in devices:
-            if device.get('deviceType') == 'Camera':
-                camera_info = {
-                    "name": device.get('name'),
-                    "id": device.get('id'),
-                    "physicalId": device.get('physicalId'),
-                    "url": device.get('url'),
-                    "typeId": device.get('typeId')
-                }
-                cameras.append(camera_info)
-
-        # Display the filtered list of cameras with details
-        print("\n[INFO] List of Cameras with Details:")
-        for camera in cameras:
-            print(f"Camera Name: {camera['name']}")
-            print(f"  Camera ID: {camera['id']}")
-            print(f"  Physical ID: {camera['physicalId']}")
-            print(f"  Stream URL: {camera['url']}")
-            print(f"  Type ID: {camera['typeId']}")
-            print("-" * 40)
+        cameras = [
+            {"name": device.get("name"), "id": device.get("id")}
+            for device in devices if device.get("deviceType") == "Camera"
+        ]
 
         if not cameras:
-            print("\nError: No cameras found on the system. Exiting.")
+            logging.error("\n❌ ERROR: No cameras found on the system.")
             sys.exit(1)
 
         return cameras
-    else:
-        print("Failed to retrieve the list of cameras.")
-        print("Response:", response.text)
-        return []
+    except requests.exceptions.RequestException as e:
+        logging.error("\n❌ ERROR: Failed to retrieve the list of cameras.")
+        logging.error("Details: %s", str(e))
+        sys.exit(1)
 
 
-# Function to prompt for recording type
-def get_recording_type():
-    print("\nSelect Recording Type:")
-    print("  (A) Always")
-    print("  (M) Motion Only")
-    print("  (MLR) Motion and Low Res")
-    print("  (OLR) Objects and Low Res")
-    print("  (MOLR) Motion+Objects and Low Res (Default)")
+def get_fps():
+    """Prompt user for FPS value. Default is 15."""
+    while True:
+        fps_input = input("\nEnter Frames Per Second (FPS) [Default: 15]: ").strip()
+        if not fps_input:
+            return 15  # Default FPS
+        try:
+            fps = int(fps_input)
+            if fps > 0:
+                return fps
+            else:
+                print("⚠️ ERROR: FPS must be a positive number.")
+        except ValueError:
+            print("⚠️ ERROR: Invalid input. Please enter a number.")
 
-    choice = input("Choose recording type (Default: MOLR): ").strip().upper()
 
-    # Default to Motion+Objects and Low Res if enter is pressed
-    if not choice:
-        choice = "MOLR"
+def get_wisestream_mode():
+    """Prompt user to enable Wisestream and select mode with default values."""
+    enable_wisestream = input("\nEnable Wisestream? (y/n) [Default: y]: ").strip().lower() or "y"
 
-    # Mapping user choice to recording settings
-    record_settings = {
-        "A": {
-            "metadataTypes": "none",
-            "recordingType": "always"
-        },
-        "M": {
-            "metadataTypes": "motion",
-            "recordingType": "metadataOnly"
-        },
-        "MLR": {
-            "metadataTypes": "motion",
-            "recordingType": "metadataAndLowQuality"
-        },
-        "OLR": {
-            "metadataTypes": "objects",
-            "recordingType": "metadataAndLowQuality"
-        },
-        "MOLR": {
-            "metadataTypes": "motion|objects",
-            "recordingType": "metadataAndLowQuality"
-        }
+    if enable_wisestream == "y":
+        while True:
+            mode = input(
+                "Select Wisestream mode (Low/Medium/High) [Default: Medium]: ").strip().capitalize() or "Medium"
+            if mode in ["Low", "Medium", "High"]:
+                return mode
+            print("⚠️ ERROR: Invalid choice. Please enter 'Low', 'Medium', or 'High'.")
+
+    return "Off"
+
+
+def change_codec_and_wisestream(server_url, camera_id, token, wisestream_mode):
+    """Modify the camera codec to H.265 and update Wisestream mode if enabled."""
+
+    camera_id = camera_id.strip("{}")  # Remove unnecessary brackets
+
+    url = f"{server_url}/devices/{camera_id}/advanced"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    payload = {
+        "PRIMARY%media/videoprofile/EncodingType": "H265",
+        "media/wisestream/Mode": wisestream_mode
     }
 
-    return record_settings.get(choice, record_settings["MOLR"])
+    logging.info(f"\n🔄 Changing codec to H.265 and Wisestream mode to {wisestream_mode} for camera: {camera_id}")
+
+    try:
+        response = requests.patch(url, headers=headers, json=payload, verify=False)
+        response.raise_for_status()
+        logging.info(f"✅ Codec & Wisestream mode updated successfully for camera: {camera_id}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"\n❌ ERROR: Failed to update codec & Wisestream mode for camera {camera_id}.")
+        logging.error("Details: %s", str(e))
 
 
-# Function to enable recording by PATCHing the device with schedule
-def enable_recording(server_url, camera, token, recording_type):
+def enable_recording(server_url, camera, token, fps):
+    """Enable recording by PATCHing the device with schedule."""
     url = f"{server_url}/devices/{camera['id']}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     schedule = {
         "isEnabled": True,
         "tasks": [
-            {
-                "dayOfWeek": day,
-                "startTime": 0,
-                "endTime": 86400,
-                "fps": 15,
-                "bitrateKbps": 0,
-                "metadataTypes": recording_type["metadataTypes"],
-                "recordingType": recording_type["recordingType"],
-                "streamQuality": "normal"
-            } for day in range(1, 8)
+            {"dayOfWeek": day, "startTime": 0, "endTime": 86400, "fps": fps, "recordingType": "always"}
+            for day in range(1, 8)
         ]
     }
 
-    payload = {
-        "id": camera['id'],
-        "physicalId": camera['physicalId'],
-        "url": camera['url'],
-        "typeId": camera['typeId'],
-        "isLicenseUsed": True,
-        "schedule": schedule
-    }
+    payload = {"id": camera["id"], "schedule": schedule}
 
-    print("\n[DEBUG] Sending PATCH Request to Enable Recording:")
-    print("URL:", url)
-    print("Headers:", headers)
-    print("Payload:", json.dumps(payload, indent=4))
+    logging.info(f"\n📹 Enabling recording for camera: {camera['name']} at {fps} FPS")
 
-    response = requests.patch(url, headers=headers, json=payload, verify=False)
-    if response.status_code == 200:
-        print(f"Recording enabled for camera {camera['name']}")
-    else:
-        print(f"Failed to enable recording for camera {camera['name']}. Status Code: {response.status_code}")
-        print("Response:", response.text)
+    try:
+        response = requests.patch(url, headers=headers, json=payload, verify=False)
+        response.raise_for_status()
+        logging.info(f"✅ Recording enabled for camera: {camera['name']}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"\n❌ ERROR: Failed to enable recording for camera {camera['name']}.")
+        logging.error("Details: %s", str(e))
 
 
-# Main function
 def main():
+    """Main function to execute the script."""
     server_url, username, password = get_server_details()
     token = get_session_token(server_url, username, password)
 
     if not check_available_licenses(server_url, token):
         sys.exit(1)
 
-    recording_type = get_recording_type()
+    fps = get_fps()
+    wisestream_mode = get_wisestream_mode()
     cameras = list_cameras(server_url, token)
 
     for camera in cameras:
-        print(f"\nProcessing Camera: {camera['name']}")
-        enable_recording(server_url, camera, token, recording_type)
+        logging.info(f"\n📷 Processing Camera: {camera['name']}")
+        change_codec_and_wisestream(server_url, camera["id"], token, wisestream_mode)
+        enable_recording(server_url, camera, token, fps)
 
 
 if __name__ == "__main__":
