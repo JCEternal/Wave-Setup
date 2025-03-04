@@ -5,6 +5,7 @@
 # Checks Wave server for licenses, enables recording for all cameras at desired framerate,
 # switches to H.265 codec, and enables Wisestream.
 # Wisestream 3 is not available through Wave :(
+# test
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ! python
