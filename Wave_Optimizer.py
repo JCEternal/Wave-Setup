@@ -1,11 +1,10 @@
 # Wave Optimizer 1.1 - 3/4/25
 # Created by JC
-# Needs requests installed: pip install requests
+# Requires requests: pip install requests
 
 # Checks Wave server for licenses, enables recording for all cameras at desired framerate,
 # switches to H.265 codec, and enables Wisestream.
 # Wisestream 3 is not available through Wave :(
-# test
 
 # ---------------------------------------------------------------------------------------------------------------------
 # ! python
@@ -77,12 +76,15 @@ def get_session_token(server_url, username, password):
     try:
         response = requests.post(url, json=payload, headers=headers, verify=False)
         response.raise_for_status()
-        logging.info("✅ Authentication successful. Session token obtained.")
-        return response.json().get("token")
+
+        token = response.json().get("token")
+        logging.info("\n✅ Authentication successful. Session token obtained.")  # 🔥 Moved here immediately after authentication
+        return token
     except requests.exceptions.RequestException as e:
         logging.error("\n❌ ERROR: Failed to obtain session token. Check credentials and server URL.")
         logging.error("Response: %s", response.text if response else str(e))
         sys.exit(1)
+
 
 
 def list_cameras(server_url, token):
@@ -132,7 +134,8 @@ def get_wisestream_mode():
 
     if enable_wisestream == "y":
         while True:
-            mode = input("Select Wisestream mode (Low/Medium/High) [Default: Medium]: ").strip().capitalize() or "Medium"
+            mode = input(
+                "Select Wisestream mode (Low/Medium/High) [Default: Medium]: ").strip().capitalize() or "Medium"
             if mode in ["Low", "Medium", "High"]:
                 return mode
             print("⚠️ ERROR: Invalid choice. Please enter 'Low', 'Medium', or 'High'.")
@@ -160,18 +163,75 @@ def get_recording_type():
     }.get(choice, {"metadataTypes": "motion|objects", "recordingType": "metadataAndLowQuality"})
 
 
+def enable_recording(server_url, camera, token, recording_type, fps):
+    """Enable recording by updating the schedule settings for the camera."""
+
+    url = f"{server_url}/devices/{camera['id']}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    schedule = {
+        "isEnabled": True,
+        "tasks": [
+            {
+                "dayOfWeek": day,
+                "startTime": 0,
+                "endTime": 86400,
+                "fps": fps,
+                "metadataTypes": recording_type["metadataTypes"],
+                "recordingType": recording_type["recordingType"],
+                "streamQuality": "normal"
+            }
+            for day in range(1, 8)
+        ]
+    }
+
+    payload = {"id": camera["id"], "schedule": schedule}
+
+    logging.info(f"\n📹 Enabling recording for {camera['name']} at {fps} FPS")
+    try:
+        response = requests.patch(url, headers=headers, json=payload, verify=False)
+        response.raise_for_status()
+        logging.info(f"✅ Recording enabled for {camera['name']}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"\n❌ ERROR: Failed to enable recording for {camera['name']}. Details: {e}")
+
+
+def change_codec_and_wisestream(server_url, camera_id, token, wisestream_mode):
+    """Modify the camera codec to H.265 and update Wisestream mode if enabled."""
+
+    url = f"{server_url}/devices/{camera_id}/advanced"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    payload = {
+        "PRIMARY%media/videoprofile/EncodingType": "H265",
+        "media/wisestream/Mode": wisestream_mode
+    }
+
+    logging.info(f"\n🔄 Updating camera: {camera_id} to H.265 & Wisestream mode: {wisestream_mode}")
+
+    try:
+        response = requests.patch(url, headers=headers, json=payload, verify=False)
+        response.raise_for_status()
+        logging.info(f"✅ Camera {camera_id}: Codec & Wisestream updated successfully.")
+        return "Success"
+    except requests.exceptions.RequestException as e:
+        logging.error(f"\n❌ ERROR: Failed to update codec & Wisestream for {camera_id}. Details: {e}")
+        return "Failed"
+
 def save_results_to_csv(export_path, results):
     """Save camera processing results to a CSV file."""
     file_path = os.path.join(export_path, "WaveOptimizer_Results.csv")
-    with open(file_path, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Camera Name", "Camera ID", "Codec Change & Wisestream"])
-        writer.writerows(results)
 
-    logging.info(f"\n✅ Results saved to: {file_path}")
+    try:
+        with open(file_path, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Camera Name", "Camera ID", "Codec Change", "Recording Enabled"])
+            writer.writerows(results)
 
+        logging.info(f"\n✅ Results saved to: {file_path}")
+    except Exception as e:
+        logging.error(f"\n❌ ERROR: Failed to save results to CSV. Details: {e}")
 
-### **Main Function**
 
 def main():
     """Main function to execute the script."""
@@ -188,11 +248,18 @@ def main():
 
     for camera in cameras:
         logging.info(f"\n📷 Processing Camera: {camera['name']}")
-        results.append([camera["name"], camera["id"], "Success"])
+
+        # Change codec & Wisestream mode
+        codec_result = change_codec_and_wisestream(server_url, camera["id"], token, wisestream_mode)
+
+        # Enable recording with selected settings
+        enable_recording(server_url, camera, token, recording_type, fps)
+
+        # Save results for CSV export
+        results.append([camera["name"], camera["id"], codec_result])
 
     save_results_to_csv(export_path, results)
 
 
-### **Execute Script**
 if __name__ == "__main__":
     main()
