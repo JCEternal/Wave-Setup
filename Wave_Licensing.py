@@ -3,7 +3,7 @@
 # Needs requests installed, pip install requests
 
 # Simply copy and paste all the license data (not need to truncate any information, the script cleans it up), run the
-# script, input the data and license the system quickly!!!
+# script, input the data and license the system quickly!!
 
 # Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
 
