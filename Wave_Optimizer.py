@@ -6,7 +6,8 @@
 # switches to H.265 codec, and enables Wisestream.
 # Wisestream 3 is not available through Wave :(
 
-# ---------------------------------------------------------------------------------------------------------------------
+# Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
+
 # ! python
 
 import requests

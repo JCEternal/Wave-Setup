@@ -1,3 +1,11 @@
+# Wave Camera Add via Range v1.0
+# Created by JC
+# Needs requests installed, pip install requests
+
+# Adds cameras to Wave server by an ip range
+
+# Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
+
 import requests
 import ipaddress
 import time
