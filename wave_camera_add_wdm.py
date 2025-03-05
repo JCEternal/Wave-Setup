@@ -1,3 +1,10 @@
+# Wave Camera Add via WDM Export v1.0 3/5/25
+# Created by JC
+# Requires requests and panda: pip install requests panda
+
+# Authenticates to Wave Server, reads the excel file export for camera IP addresses, ignores multi duplicates and adds
+# all cameras using the addFoundDevices mode of Start Device Search.
+
 import requests
 import ipaddress
 import time
