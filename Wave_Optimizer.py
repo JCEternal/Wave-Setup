@@ -3,7 +3,7 @@
 # Requires requests: pip install requests
 
 # Checks Wave server for licenses, enables recording for all cameras at desired framerate,
-# switches to H.265 codec, and enables Wisestream.
+# switches to H.265 codec, and enables Wisestream
 # Wisestream 3 is not available through Wave :(
 
 # Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
