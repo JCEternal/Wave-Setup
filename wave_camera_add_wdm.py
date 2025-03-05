@@ -3,7 +3,7 @@
 # Requires requests and panda: pip install requests panda
 
 # Authenticates to Wave Server, reads the excel file export for camera IP addresses, ignores multi duplicates and adds
-# all cameras using the addFoundDevices mode of Start Device Search.
+# all cameras using the addFoundDevices mode of Start Device Search
 
 # Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
 
