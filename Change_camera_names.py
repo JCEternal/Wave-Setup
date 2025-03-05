@@ -3,7 +3,7 @@
 # Requires requests and panda: pip install requests panda
 
 # Authenticates to Wave Server, pulls the device list, reads an excel file for data and matches the mac addresses to
-# name the cameras per the excel sheet with a check for multi sensor channels.
+# name the cameras per the excel sheet with a check for multi sensor channels
 
 # Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
 
