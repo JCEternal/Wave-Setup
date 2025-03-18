@@ -1,0 +1,136 @@
+# Wave Audit User Report 1.0 3/18/25
+# Created by JC
+
+# This script runs against Wave and prints out a list of users and the number of 
+# times they have logged in.
+
+# Optimized to run via windows command prompt
+
+# Script running video for first timers - https://youtu.be/W1CuoEo-Jtw
+
+import os
+import ipaddress
+import requests
+import urllib3
+from collections import Counter
+
+# Disable insecure request warnings (for development purposes only)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def authenticate_wave(base_url, username, password, headers):
+    auth_url = f"{base_url}/rest/v3/login/sessions"
+    auth_payload = {"username": username, "password": password}
+    try:
+        response = requests.post(auth_url, json=auth_payload, headers=headers, verify=False)
+        if response.status_code in [200, 201]:
+            token = response.json().get("token")
+            headers["Authorization"] = f"Bearer {token}"
+            print("Authentication successful.")
+            return True
+        else:
+            print("Authentication failed. Exiting...")
+            return False
+    except Exception as e:
+        print("Error during authentication:", e)
+        return False
+
+def get_audit_log(base_url, headers, from_date):
+    """
+    Fetches audit log information from the server starting from the given date,
+    then outputs each username found (from authSession) and the number of times it appears.
+    """
+    url = f"{base_url}/api/auditLog"
+    params = {"from": from_date}
+    try:
+        response = requests.get(url, headers=headers, params=params, verify=False)
+        if response.status_code == 200:
+            audit_data = response.json()
+            # Verify the response structure using the provided example format.
+            if isinstance(audit_data, dict) and "reply" in audit_data:
+                events = audit_data["reply"]
+                username_counts = Counter()
+                for event in events:
+                    auth_session = event.get("authSession", {})
+                    user_name = auth_session.get("userName")
+                    if user_name:
+                        username_counts[user_name] += 1
+
+                print("\nAudit Log Summary:")
+                for user, count in username_counts.items():
+                    print(f"Username: {user}, Occurrences: {count}")
+            else:
+                print("Unexpected audit log data format.")
+        else:
+            print("Failed to fetch audit log. Status code:", response.status_code)
+    except Exception as e:
+        print("Error while fetching audit log:", e)
+
+def main():
+    # Clear the screen for a clean CMD interface and set the window title.
+    if os.name == "nt":
+        os.system("cls")
+        os.system("title Audit Log Retrieval")
+
+    print("=== Audit Log Retrieval Script ===\n")
+
+    # Prompt for connection details and credentials.
+    while True:
+        server_ip = input("Enter server IP: ").strip()
+        if not server_ip:
+            print("Server IP is required.")
+            continue
+        try:
+            ipaddress.ip_address(server_ip)
+            break
+        except ValueError:
+            print("Invalid IP address. Please enter a valid IP address.")
+
+    port_input = input("Enter port [7001]: ").strip()
+    username_input = input("Enter username [admin]: ").strip()
+
+    while True:
+        password = input("Enter password: ").strip()
+        if not password:
+            print("Password is required.")
+            continue
+        verify_choice = input("Is this password correct? (y/n): ").strip().lower()
+        if verify_choice == "y":
+            break
+        else:
+            print("Please re-enter your password.")
+
+    file_location_input = input("Enter file location [C:\\reports]: ").strip()
+
+    port = port_input if port_input else "7001"
+    username = username_input if username_input else "admin"
+    file_location = file_location_input if file_location_input else r"C:\reports"
+
+    if not os.path.exists(file_location):
+        try:
+            os.makedirs(file_location)
+            print(f"Created directory: {file_location}")
+        except Exception as e:
+            print("Error creating directory:", e)
+            return
+
+    base_url = f"https://{server_ip}:{port}"
+    headers = {"Content-Type": "application/json"}
+
+    if not authenticate_wave(base_url, username, password, headers):
+        return
+
+    # Prompt for audit log start date without a default.
+    while True:
+        from_date = input("Enter the audit log start date (YYYY-MM-DD): ").strip()
+        if from_date:
+            break
+        else:
+            print("Start date is required.")
+
+    get_audit_log(base_url, headers, from_date)
+    
+    if os.name == "nt":
+        input("\nPress Enter to exit...")
+
+if __name__ == "__main__":
+    main()
